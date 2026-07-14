@@ -1,0 +1,99 @@
+body {
+    background-color: #020617;
+    user-select: none;
+}
+
+.card {
+    width: 100px;
+    height: 140px;
+    background: white;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 8px;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    cursor: pointer;
+    transition: all 0.2s ease-out;
+    position: relative;
+    border: 1px solid #e2e8f0;
+}
+
+.card:hover {
+    transform: translateY(-20px) scale(1.05);
+    z-index: 50 !important;
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.3);
+}
+
+.card.red { color: #ef4444; }
+.card.black { color: #1e293b; }
+
+.card-back {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    background-image: radial-gradient(circle at 2px 2px, #334155 1px, transparent 0);
+    background-size: 8px 8px;
+    border: 2px solid #334155;
+}
+
+.card-mini {
+    width: 60px;
+    height: 90px;
+    background: white;
+    border-radius: 6px;
+    padding: 4px;
+    border: 1px solid #ddd;
+}
+
+.table-card {
+    position: relative;
+    margin: 0 -20px;
+}
+
+.table-pair {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    width: 100px;
+    height: 160px;
+}
+
+.table-card-attack {
+    z-index: 10;
+}
+
+.table-card-defense {
+    z-index: 20;
+    margin-top: -100px;
+    margin-left: 15px;
+    transform: rotate(5deg);
+}
+
+.deck-stack::before {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 100%; height: 100%;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    z-index: -1;
+}
+
+#player-hand .card {
+    animation: slideUp 0.5s ease-out forwards;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100px) rotate(10deg); opacity: 0; }
+    to { transform: translateY(0) rotate(0deg); opacity: 1; }
+}
+
+.pulse-yellow {
+    animation: pulseY 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulseY {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+}
