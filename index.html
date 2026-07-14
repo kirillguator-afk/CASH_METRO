@@ -22,19 +22,11 @@
         .playing-table { background: radial-gradient(circle, #064e3b 0%, #022c22 100%); }
         #toast { bottom: 120px; left: 50%; transform: translateX(-50%) translateY(200px); transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
         #toast.active { transform: translateX(-50%) translateY(0); }
-        .card { aspect-ratio: 2.5/3.5; transition: all 0.3s; cursor: pointer; }
-        
-        /* Анимация пульсации для активных лобби */
-        .pulse-node { position: relative; }
-        .pulse-node::before { 
-            content: ''; position: absolute; width: 100%; height: 100%; 
-            background: rgba(59, 130, 246, 0.4); border-radius: 50%; 
-            animation: pulse-ring 1.5s infinite; 
-        }
-        @keyframes pulse-ring { 0% { transform: scale(.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
-
         .loader-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .pulse-node { position: relative; }
+        .pulse-node::before { content: ''; position: absolute; width: 100%; height: 100%; background: #3b82f6; border-radius: 50%; animation: pulse-ring 1.5s infinite; opacity: 0.5; }
+        @keyframes pulse-ring { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
     </style>
 </head>
 <body class="min-h-screen select-none">
@@ -46,22 +38,22 @@
                 <span id="u-initial">?</span>
             </div>
             <div>
-                <div id="u-name" class="text-xs font-bold tracking-tight">Syncing...</div>
+                <div id="u-name" class="text-xs font-bold tracking-tight uppercase">Loading...</div>
                 <div class="flex items-center gap-1.5">
-                    <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                    <div id="u-status" class="text-[8px] font-mono text-blue-400 uppercase tracking-widest">Network Live</div>
+                    <div id="net-indicator" class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
+                    <div id="u-status" class="text-[8px] font-mono text-blue-400 uppercase tracking-widest italic">P2P Offline</div>
                 </div>
             </div>
         </div>
-        <div class="bg-white/5 px-4 py-2 rounded-2xl border border-white/10 flex flex-col items-end">
-            <span class="text-[7px] opacity-40 font-black uppercase tracking-tighter">Balance</span>
+        <div class="bg-white/5 px-4 py-2 rounded-2xl border border-white/10 text-right">
+            <span class="text-[7px] opacity-40 font-black uppercase block tracking-widest">Balance</span>
             <span id="u-balance" class="font-mono font-bold text-blue-400 text-sm">0</span>
         </div>
     </header>
 
-    <!-- Main Viewport -->
+    <!-- Content -->
     <main id="viewport" class="h-screen pt-24 pb-32 px-4 overflow-y-auto">
-        <!-- SPA content -->
+        <!-- Views -->
     </main>
 
     <!-- Navigation -->
@@ -77,14 +69,14 @@
         </button>
     </nav>
 
-    <!-- Global Toast -->
+    <!-- Toast -->
     <div id="toast" class="fixed glass px-6 py-4 rounded-3xl z-[200] flex items-center gap-4 min-w-[280px] shadow-2xl">
         <div id="toast-icon-box" class="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400">
             <span id="toast-icon">♠️</span>
         </div>
         <div>
-            <div id="toast-msg" class="text-sm font-bold tracking-tight">System ready</div>
-            <div id="toast-sub" class="text-[9px] opacity-40 uppercase font-mono tracking-widest">Nexus DB Link</div>
+            <div id="toast-msg" class="text-sm font-bold tracking-tight italic">Status Ready</div>
+            <div id="toast-sub" class="text-[9px] opacity-40 uppercase font-mono tracking-widest">Nexus DB Node</div>
         </div>
     </div>
 
@@ -94,8 +86,8 @@
         const CHAT_ID = '-5458983067';
 
         const state = {
-            user: tg.initDataUnsafe?.user || { first_name: "Local Dev", id: 12345 },
-            account: { balance: 1500, wins: 0, games: 0 },
+            user: tg.initDataUnsafe?.user || { first_name: "Local Dev", id: 0 },
+            account: { balance: 2500, wins: 0, games: 0 },
             peer: null,
             myId: null,
             conn: null,
@@ -103,52 +95,31 @@
             isFetching: false
         };
 
-        // --- BACKEND LOGIC (TELEGRAM BROADCAST) ---
-        async function publishLobby(mode, bet) {
-            if (!state.myId) return notify("Peer не готов", "⚠️", "Wait for connection");
-            
-            const payload = {
-                host: state.user.first_name,
-                id: state.myId,
-                mode: mode.toUpperCase(),
-                bet: bet,
-                ts: Date.now()
-            };
-            const message = `LOBBY_V1|${JSON.stringify(payload)}`;
-
-            try {
-                const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chat_id: CHAT_ID, text: message })
-                });
-                if (res.ok) {
-                    notify("Стол опубликован", "✅", "Broadcasting to Channel");
-                    router('game'); // Переходим в режим ожидания
-                }
-            } catch (e) {
-                notify("Ошибка сети", "❌", "Check Bot Access");
-            }
-        }
-
+        // --- FETCHING ENGINE ---
         async function fetchLobbies() {
             if (state.isFetching) return;
             state.isFetching = true;
-            
-            // Если мы в лобби, показываем индикатор загрузки
+
             const container = document.getElementById('lobby-container');
-            if (container) container.innerHTML = `<div class="flex justify-center py-10"><div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full loader-spin"></div></div>`;
+            if (container && state.activeLobbies.length === 0) {
+                container.innerHTML = `<div class="flex flex-col items-center justify-center py-12 gap-4">
+                    <div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full loader-spin"></div>
+                    <p class="text-[10px] font-mono opacity-40 animate-pulse uppercase">Scanning Telegram Database...</p>
+                </div>`;
+            }
 
             try {
-                // Запрашиваем последние обновления
-                const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=50&allowed_updates=["message","channel_post"]`);
+                // Пытаемся получить последние 100 обновлений. 
+                // Мы НЕ используем offset, чтобы сообщения не "пропадали" для других пользователей.
+                const url = `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=100&allowed_updates=["message","channel_post"]`;
+                const res = await fetch(url);
                 const data = await res.json();
-                
-                if (data.ok) {
+
+                if (data.ok && data.result) {
                     const now = Date.now();
-                    const filtered = data.result
-                        .map(u => {
-                            const msg = u.message || u.channel_post;
+                    const found = data.result
+                        .map(update => {
+                            const msg = update.message || update.channel_post;
                             if (msg && msg.text && msg.text.startsWith('LOBBY_V1|')) {
                                 try {
                                     return JSON.parse(msg.text.split('|')[1]);
@@ -156,71 +127,107 @@
                             }
                             return null;
                         })
-                        .filter(l => l && (now - l.ts < 600000)) // Только лобби созданные в последние 10 мин
-                        .reverse(); // Сначала новые
+                        .filter(l => l && (now - l.ts < 1800000)); // Живут 30 минут
 
-                    // Удаляем дубликаты от одного хоста
-                    state.activeLobbies = [...new Map(filtered.map(item => [item.id, item])).values()];
+                    // Фильтруем уникальные по Peer ID и берем самые свежие
+                    const unique = Array.from(new Map(found.map(item => [item.id, item])).values()).reverse();
+                    state.activeLobbies = unique;
                     
                     if (window.currentView === 'lobby') renderLobbyList();
                 }
             } catch (e) {
-                console.error("Fetch error", e);
+                console.error("Lobby Sync Error:", e);
             } finally {
                 state.isFetching = false;
             }
         }
 
-        // --- P2P CORE ---
+        async function publishLobby(mode, bet) {
+            if (!state.myId) return notify("Peer Not Ready", "⚠️", "Establishing connection...");
+
+            const lobbyData = {
+                host: state.user.first_name,
+                id: state.myId,
+                mode: mode.toUpperCase(),
+                bet: bet,
+                ts: Date.now()
+            };
+
+            const text = `LOBBY_V1|${JSON.stringify(lobbyData)}`;
+
+            try {
+                notify("Публикация...", "📡", "Sending to Channel");
+                const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: CHAT_ID, text: text })
+                });
+                
+                if (res.ok) {
+                    notify("Стол активен", "✅", "Waiting for opponent");
+                    router('game');
+                } else {
+                    const err = await res.json();
+                    notify("Ошибка бота", "❌", err.description);
+                }
+            } catch (e) {
+                notify("Ошибка сети", "❌", "Check Internet");
+            }
+        }
+
+        // --- PEER JS ---
         function initPeer() {
             state.peer = new Peer();
             state.peer.on('open', id => {
                 state.myId = id;
+                document.getElementById('net-indicator').className = "w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse";
+                document.getElementById('u-status').innerText = `P2P Online: ${id.slice(0,6)}`;
                 updateHeader();
+                fetchLobbies();
             });
             state.peer.on('connection', conn => {
                 state.conn = conn;
-                notify("Игрок вошел!", "🤝", "P2P Connected");
+                notify("Игрок вошел!", "🤝", "Starting Match");
                 router('game');
             });
         }
 
         function joinGame(targetId) {
-            if (targetId === state.myId) return notify("Это ваш стол", "🚫", "Self-join blocked");
-            notify("Подключение...", "🔗", "Handshaking");
+            if (targetId === state.myId) return notify("Ваш стол", "🚫", "Cannot join self");
+            notify("Подключение...", "🔗", "Establishing Link");
             state.conn = state.peer.connect(targetId);
             state.conn.on('open', () => router('game'));
         }
 
-        // --- UI SYSTEM ---
+        // --- UI ---
         const views = {
             lobby: () => `
                 <div class="space-y-6 animate-in fade-in duration-500">
                     <div class="flex items-center justify-between px-2">
                         <h2 class="text-3xl font-black italic text-blue-500 tracking-tighter">СТОЛЫ</h2>
-                        <button onclick="fetchLobbies()" class="w-10 h-10 glass rounded-xl flex items-center justify-center active:scale-90 transition-transform">
+                        <button onclick="fetchLobbies()" class="w-10 h-10 glass rounded-xl flex items-center justify-center active:rotate-180 transition-transform">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         </button>
                     </div>
-                    <div id="lobby-container" class="grid gap-4">
-                        <!-- Lobbies inject here -->
+                    <div id="lobby-container" class="grid gap-4 pb-10">
+                        <!-- Lobbies -->
                     </div>
                 </div>
             `,
             create: () => `
                 <div class="space-y-8 pt-4 animate-in slide-in-from-bottom-10">
                     <h2 class="text-4xl font-black italic tracking-tighter uppercase text-center">Создать</h2>
-                    <div class="glass p-8 rounded-[2.5rem] space-y-8 border border-blue-500/10">
+                    <div class="glass p-8 rounded-[3rem] space-y-8 border border-white/5">
                         <div class="space-y-3">
-                            <label class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 ml-4">Режим игры</label>
-                            <select id="m-mode" class="w-full bg-white/5 p-5 rounded-2xl font-bold border border-white/5 outline-none">
+                            <label class="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Режим</label>
+                            <select id="m-mode" class="w-full bg-white/5 p-5 rounded-2xl font-bold border border-white/10 outline-none appearance-none">
                                 <option value="classic">ПОДКИДНОЙ (36)</option>
                                 <option value="duel">ДУЭЛЬ (24)</option>
                                 <option value="transfer">ПЕРЕВОДНОЙ (36)</option>
                             </select>
                         </div>
                         <div class="space-y-3">
-                            <label class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 ml-4">Ставка (💰)</label>
+                            <label class="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Ставка (💰)</label>
                             <input id="m-bet" type="number" value="100" class="w-full bg-white/5 p-5 rounded-2xl font-mono text-2xl text-center border border-white/10 outline-none">
                         </div>
                         <button onclick="publishLobby(document.getElementById('m-mode').value, document.getElementById('m-bet').value)" class="w-full py-6 bg-blue-600 rounded-[2rem] text-sm font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all">Опубликовать</button>
@@ -230,21 +237,21 @@
             profile: () => `
                 <div class="pt-8 space-y-8 animate-in zoom-in-95">
                     <div class="flex flex-col items-center gap-6">
-                        <div class="w-32 h-32 rounded-[2.5rem] bg-gradient-to-br from-blue-600 to-indigo-900 p-1">
-                             <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${state.user.id}" class="w-full h-full rounded-[2.3rem] bg-[#030712] p-2">
+                        <div class="w-32 h-32 rounded-[2.5rem] bg-gradient-to-br from-blue-600 to-indigo-900 p-1 shadow-2xl">
+                             <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=${state.user.id}" class="w-full h-full rounded-[2.3rem] bg-[#030712] p-2">
                         </div>
                         <div class="text-center">
-                            <h2 class="text-3xl font-black italic tracking-tighter uppercase">${state.user.first_name}</h2>
-                            <p class="text-blue-500 font-mono text-[9px] tracking-widest uppercase">ID: ${state.user.id}</p>
+                            <h2 class="text-3xl font-black italic uppercase">${state.user.first_name}</h2>
+                            <p class="text-blue-500 font-mono text-[9px] tracking-widest uppercase">Rank: Metro Nomad</p>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="glass p-6 rounded-[2rem] text-center border-b-4 border-emerald-500">
-                            <p class="text-[9px] opacity-40 uppercase font-black">Победы</p>
+                        <div class="glass p-6 rounded-[2rem] text-center border-b-2 border-emerald-500">
+                            <p class="text-[9px] opacity-40 uppercase font-black">Wins</p>
                             <p class="text-2xl font-black">${state.account.wins}</p>
                         </div>
-                        <div class="glass p-6 rounded-[2rem] text-center border-b-4 border-blue-500">
-                            <p class="text-[9px] opacity-40 uppercase font-black">Игры</p>
+                        <div class="glass p-6 rounded-[2rem] text-center border-b-2 border-blue-500">
+                            <p class="text-[9px] opacity-40 uppercase font-black">Games</p>
                             <p class="text-2xl font-black">${state.account.games}</p>
                         </div>
                     </div>
@@ -252,25 +259,56 @@
             `,
             game: () => `
                 <div class="fixed inset-0 z-[150] playing-table flex flex-col p-4 animate-in zoom-in-95">
-                    <div class="flex justify-between items-center text-[10px] font-mono opacity-30 uppercase">
-                        <span>P2P Session</span>
-                        <span class="animate-pulse">Waiting for action...</span>
+                    <div class="flex justify-between items-center text-[10px] font-mono opacity-30 uppercase pt-2">
+                        <span>P2P Encrypted Session</span>
+                        <span class="animate-pulse">Handshaking...</span>
                     </div>
                     <div class="flex-1 flex flex-col items-center justify-center">
-                         <div class="w-32 h-32 border-2 border-dashed border-white/10 rounded-3xl flex items-center justify-center">
-                             <div class="text-center opacity-20">
-                                 <p class="text-[8px] font-black uppercase">Battlefield</p>
-                                 <p class="text-xl">🃏</p>
+                         <div class="w-32 h-32 border-2 border-dashed border-white/5 rounded-[2.5rem] flex items-center justify-center bg-white/5">
+                             <div class="text-center opacity-30">
+                                 <p class="text-xl">⌛</p>
+                                 <p class="text-[8px] font-black uppercase mt-1">Waiting</p>
                              </div>
                          </div>
                     </div>
-                    <div class="flex justify-center -space-x-4 mb-16">
-                         ${[1,2,3,4,5,6].map(() => `<div class="w-16 h-24 bg-white rounded-lg shadow-xl"></div>`).join('')}
+                    <div class="flex justify-center -space-x-6 mb-16">
+                         ${[1,2,3,4,5,6].map(() => `<div class="w-20 h-28 bg-white/10 border border-white/10 rounded-xl"></div>`).join('')}
                     </div>
-                    <button onclick="router('lobby')" class="mb-8 py-4 glass rounded-2xl text-[10px] font-black text-red-500 uppercase tracking-widest">Выйти в лобби</button>
+                    <button onclick="router('lobby')" class="mb-10 py-5 glass rounded-3xl text-[10px] font-black text-red-500 uppercase tracking-widest active:bg-red-500/10 transition-colors">Сдаться / Выйти</button>
                 </div>
             `
         };
+
+        function renderLobbyList() {
+            const container = document.getElementById('lobby-container');
+            if (!container) return;
+
+            if (state.activeLobbies.length === 0) {
+                container.innerHTML = `<div class="text-center py-20">
+                    <p class="text-xs font-black uppercase tracking-[0.2em] opacity-20 italic">Нет активных столов</p>
+                    <p class="text-[8px] font-mono opacity-10 mt-2">Bot API scan: 0 results</p>
+                </div>`;
+                return;
+            }
+
+            container.innerHTML = state.activeLobbies.map(lobby => `
+                <div class="glass p-5 rounded-[2.5rem] flex justify-between items-center border border-white/5 hover:border-blue-500/30 transition-all shadow-xl group">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-600/10 flex items-center justify-center pulse-node text-xl group-hover:scale-110 transition-transform">
+                            🃏
+                        </div>
+                        <div>
+                            <p class="text-sm font-black italic tracking-tight uppercase">${lobby.host}</p>
+                            <div class="flex gap-2 mt-0.5">
+                                <span class="text-[9px] font-mono text-blue-400 uppercase tracking-tighter bg-blue-400/10 px-1.5 rounded">${lobby.mode}</span>
+                                <span class="text-[9px] font-mono text-emerald-400 font-bold">${lobby.bet}💰</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="joinGame('${lobby.id}')" class="bg-blue-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all">Вход</button>
+                </div>
+            `).join('');
+        }
 
         function router(view) {
             window.currentView = view;
@@ -283,34 +321,6 @@
             
             if (view === 'lobby') fetchLobbies();
             tg.HapticFeedback.impactOccurred('light');
-        }
-
-        function renderLobbyList() {
-            const container = document.getElementById('lobby-container');
-            if (!container) return;
-
-            if (state.activeLobbies.length === 0) {
-                container.innerHTML = `<div class="text-center py-10 opacity-30 text-xs font-black uppercase tracking-widest">Нет активных столов</div>`;
-                return;
-            }
-
-            container.innerHTML = state.activeLobbies.map(lobby => `
-                <div class="glass p-5 rounded-[2.2rem] flex justify-between items-center border border-white/5 hover:border-blue-500/40 transition-colors shadow-lg">
-                    <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-2xl bg-blue-600/10 flex items-center justify-center pulse-node text-xl">
-                            🃏
-                        </div>
-                        <div>
-                            <p class="text-sm font-black italic tracking-tight">${lobby.host}</p>
-                            <div class="flex gap-2 mt-0.5">
-                                <span class="text-[9px] font-mono text-blue-400 uppercase">${lobby.mode}</span>
-                                <span class="text-[9px] font-mono text-emerald-400 font-bold">${lobby.bet} 💰</span>
-                            </div>
-                        </div>
-                    </div>
-                    <button onclick="joinGame('${lobby.id}')" class="bg-blue-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all">Вход</button>
-                </div>
-            `).join('');
         }
 
         function updateHeader() {
@@ -332,7 +342,10 @@
             tg.expand();
             initPeer();
             router('lobby');
-            setInterval(fetchLobbies, 15000); // Опрос канала каждые 15 сек
+            // Регулярное обновление лобби
+            setInterval(() => {
+                if (window.currentView === 'lobby') fetchLobbies();
+            }, 8000);
         };
     </script>
 </body>
